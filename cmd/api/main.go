@@ -7,23 +7,21 @@ import (
 
 	"github.com/joaodddev/paymentprocessor/internal/config"
 	"github.com/joaodddev/paymentprocessor/internal/repository"
+	"github.com/joaodddev/paymentprocessor/internal/service"
 )
 
 func main() {
 
 	log.Println("🚀 Iniciando Payment Processor...")
 
-	// Carrega configurações
 	cfg := config.Load()
 
 	log.Println("✅ Configurações carregadas")
 
-	// Define porta padrão caso não exista
 	if cfg.AppPort == "" {
 		cfg.AppPort = "8080"
 	}
 
-	// Conecta ao PostgreSQL
 	db, err := repository.NewPostgresPool(cfg)
 	if err != nil {
 		log.Fatal(err)
@@ -33,16 +31,14 @@ func main() {
 
 	log.Println("✅ PostgreSQL conectado")
 
-	// Inicializa Repository
 	paymentRepository := repository.NewPostgresPaymentRepository(db)
 
-	// Apenas para evitar erro de variável não utilizada
-	_ = paymentRepository
+	paymentService := service.NewPaymentService(paymentRepository)
 
-	// Inicializa Gin
+	_ = paymentService
+
 	router := gin.Default()
 
-	// Health Check
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"status": "up",

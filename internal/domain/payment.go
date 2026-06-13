@@ -7,6 +7,7 @@ import (
 )
 
 type PaymentStatus string
+type PaymentMethod string
 
 const (
 	PaymentPending    PaymentStatus = "PENDING"
@@ -15,11 +16,18 @@ const (
 	PaymentRejected   PaymentStatus = "REJECTED"
 )
 
+const (
+	PaymentMethodPIX        PaymentMethod = "PIX"
+	PaymentMethodCreditCard PaymentMethod = "CREDIT_CARD"
+	PaymentMethodBoleto     PaymentMethod = "BOLETO"
+)
+
 type Payment struct {
 	ID             uuid.UUID
 	Amount         int64
 	Currency       string
 	CustomerID     uuid.UUID
+	Method         PaymentMethod
 	Status         PaymentStatus
 	IdempotencyKey string
 	CreatedAt      time.Time

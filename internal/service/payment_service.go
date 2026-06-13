@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,12 +15,8 @@ type PaymentService struct {
 	repository repository.PaymentRepository
 }
 
-func NewPaymentService(
-	repository repository.PaymentRepository,
-) *PaymentService {
-	return &PaymentService{
-		repository: repository,
-	}
+func NewPaymentService(repository repository.PaymentRepository) *PaymentService {
+	return &PaymentService{repository: repository}
 }
 
 func (s *PaymentService) CreatePayment(
@@ -27,16 +24,24 @@ func (s *PaymentService) CreatePayment(
 	amount int64,
 	currency string,
 	customerID uuid.UUID,
+	method domain.PaymentMethod,
 	idempotencyKey string,
 ) (*domain.Payment, error) {
 
-	now := time.Now()
+	switch method {
+	case domain.PaymentMethodPIX, domain.PaymentMethodCreditCard, domain.PaymentMethodBoleto:
+		// valid
+	default:
+		return nil, fmt.Errorf("método de pagamento inválido: %s", method)
+	}
 
+	now := time.Now()
 	payment := &domain.Payment{
 		ID:             uuid.New(),
 		Amount:         amount,
 		Currency:       currency,
 		CustomerID:     customerID,
+		Method:         method,
 		Status:         domain.PaymentPending,
 		IdempotencyKey: idempotencyKey,
 		CreatedAt:      now,
@@ -50,26 +55,14 @@ func (s *PaymentService) CreatePayment(
 	return payment, nil
 }
 
-func (s *PaymentService) GetPaymentByID(
-	ctx context.Context,
-	id uuid.UUID,
-) (*domain.Payment, error) {
-
+func (s *PaymentService) GetPaymentByID(ctx context.Context, id uuid.UUID) (*domain.Payment, error) {
 	return s.repository.FindByID(ctx, id)
 }
 
-func (s *PaymentService) ListPayments(
-	ctx context.Context,
-) ([]domain.Payment, error) {
-
+func (s *PaymentService) ListPayments(ctx context.Context) ([]domain.Payment, error) {
 	return s.repository.List(ctx)
 }
 
-func (s *PaymentService) UpdatePaymentStatus(
-	ctx context.Context,
-	id uuid.UUID,
-	status domain.PaymentStatus,
-) error {
-
+func (s *PaymentService) UpdatePaymentStatus(ctx context.Context, id uuid.UUID, status domain.PaymentStatus) error {
 	return s.repository.UpdateStatus(ctx, id, status)
 }

@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/joaodddev/paymentprocessor/internal/config"
+	"github.com/joaodddev/paymentprocessor/internal/handler"
 	"github.com/joaodddev/paymentprocessor/internal/repository"
 	"github.com/joaodddev/paymentprocessor/internal/service"
 )
@@ -15,8 +16,6 @@ func main() {
 	log.Println("🚀 Iniciando Payment Processor...")
 
 	cfg := config.Load()
-
-	log.Println("✅ Configurações carregadas")
 
 	if cfg.AppPort == "" {
 		cfg.AppPort = "8080"
@@ -29,13 +28,11 @@ func main() {
 
 	defer db.Close()
 
-	log.Println("✅ PostgreSQL conectado")
-
 	paymentRepository := repository.NewPostgresPaymentRepository(db)
 
 	paymentService := service.NewPaymentService(paymentRepository)
 
-	_ = paymentService
+	paymentHandler := handler.NewPaymentHandler(paymentService)
 
 	router := gin.Default()
 
@@ -45,7 +42,11 @@ func main() {
 		})
 	})
 
-	log.Printf("🌐 Servidor iniciado na porta %s\n", cfg.AppPort)
+	router.POST("/payments", paymentHandler.CreatePayment)
+	router.GET("/payments", paymentHandler.ListPayments)
+	router.GET("/payments/:id", paymentHandler.GetPayment)
+
+	log.Printf("Servidor iniciado na porta %s", cfg.AppPort)
 
 	if err := router.Run(":" + cfg.AppPort); err != nil {
 		log.Fatal(err)

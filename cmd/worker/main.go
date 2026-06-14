@@ -24,23 +24,35 @@ func main() {
 	}
 	defer db.Close()
 
-	consumer := kafkapkg.NewConsumer(cfg, cfg.KafkaTopicPaymentCreated)
-	defer consumer.Close()
+	// Consumers
+	paymentConsumer := kafkapkg.NewConsumer(cfg, cfg.KafkaTopicPaymentCreated)
+	defer paymentConsumer.Close()
 
+	webhookConsumer := kafkapkg.NewConsumer(cfg, cfg.KafkaTopicPaymentProcessed)
+	defer webhookConsumer.Close()
+
+	// Producer (para publicar payment.processed)
+	producer := kafkapkg.NewProducer(cfg)
+	defer producer.Close()
+
+	// Repositories
 	paymentRepository := repository.NewPostgresPaymentRepository(db)
+	webhookRepository := repository.NewPostgresWebhookRepository(db)
 
-	paymentWorker := worker.NewPaymentWorker(consumer, paymentRepository)
+	// Workers
+	paymentWorker := worker.NewPaymentWorker(paymentConsumer, paymentRepository, producer)
+	webhookNotifier := worker.NewWebhookNotifier(webhookConsumer, webhookRepository)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	go paymentWorker.Run(ctx)
+	go webhookNotifier.Run(ctx)
 
 	<-quit
-	log.Println("⏳ Encerrando worker...")
+	log.Println("⏳ Encerrando workers...")
 	cancel()
 }

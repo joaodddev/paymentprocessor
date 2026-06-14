@@ -30,6 +30,7 @@ type Payment struct {
 	Method         PaymentMethod
 	Status         PaymentStatus
 	IdempotencyKey string
+	WebhookURL     string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }

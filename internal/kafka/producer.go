@@ -11,38 +11,58 @@ import (
 )
 
 type Producer struct {
-	writer *kafka.Writer
+	writers map[string]*kafka.Writer
+	cfg     *config.Config
 }
 
 func NewProducer(cfg *config.Config) *Producer {
-	writer := &kafka.Writer{
-		Addr:         kafka.TCP(cfg.KafkaBrokers),
-		Topic:        cfg.KafkaTopicPaymentCreated,
-		Balancer:     &kafka.LeastBytes{},
-		WriteTimeout: 10 * time.Second,
-		ReadTimeout:  10 * time.Second,
+	makeWriter := func(topic string) *kafka.Writer {
+		return &kafka.Writer{
+			Addr:         kafka.TCP(cfg.KafkaBrokers),
+			Topic:        topic,
+			Balancer:     &kafka.LeastBytes{},
+			WriteTimeout: 10 * time.Second,
+			ReadTimeout:  10 * time.Second,
+		}
 	}
 
-	return &Producer{writer: writer}
+	return &Producer{
+		cfg: cfg,
+		writers: map[string]*kafka.Writer{
+			cfg.KafkaTopicPaymentCreated:   makeWriter(cfg.KafkaTopicPaymentCreated),
+			cfg.KafkaTopicPaymentProcessed: makeWriter(cfg.KafkaTopicPaymentProcessed),
+		},
+	}
 }
 
-func (p *Producer) PublishPaymentCreated(ctx context.Context, payload any) error {
+func (p *Producer) publish(ctx context.Context, topic string, payload any) error {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("erro ao serializar evento: %w", err)
 	}
 
-	err = p.writer.WriteMessages(ctx, kafka.Message{
+	writer, ok := p.writers[topic]
+	if !ok {
+		return fmt.Errorf("writer não encontrado para tópico: %s", topic)
+	}
+
+	return writer.WriteMessages(ctx, kafka.Message{
 		Key:   []byte(fmt.Sprintf("%d", time.Now().UnixNano())),
 		Value: data,
 	})
-	if err != nil {
-		return fmt.Errorf("erro ao publicar evento no Kafka: %w", err)
-	}
+}
 
-	return nil
+func (p *Producer) PublishPaymentCreated(ctx context.Context, payload any) error {
+	return p.publish(ctx, p.cfg.KafkaTopicPaymentCreated, payload)
+}
+
+func (p *Producer) PublishPaymentProcessed(ctx context.Context, payload any) error {
+	return p.publish(ctx, p.cfg.KafkaTopicPaymentProcessed, payload)
 }
 
 func (p *Producer) Close() error {
-	return p.writer.Close()
+	for _, w := range p.writers {
+		w.Close()
+	}
+	return nil
 }

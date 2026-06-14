@@ -16,15 +16,18 @@ import (
 type PaymentWorker struct {
 	consumer   *kafkapkg.Consumer
 	repository repository.PaymentRepository
+	producer   *kafkapkg.Producer
 }
 
 func NewPaymentWorker(
 	consumer *kafkapkg.Consumer,
 	repository repository.PaymentRepository,
+	producer *kafkapkg.Producer,
 ) *PaymentWorker {
 	return &PaymentWorker{
 		consumer:   consumer,
 		repository: repository,
+		producer:   producer,
 	}
 }
 
@@ -64,7 +67,6 @@ func (w *PaymentWorker) process(ctx context.Context, data []byte) error {
 	log.Printf("📦 Processando pagamento %s | método: %s | valor: %d %s",
 		event.PaymentID, event.Method, event.Amount, event.Currency)
 
-	// Simula tempo de processamento
 	time.Sleep(500 * time.Millisecond)
 
 	status := resolveStatus(event.Method)
@@ -79,19 +81,33 @@ func (w *PaymentWorker) process(ctx context.Context, data []byte) error {
 	}
 
 	log.Printf("✅ Pagamento %s atualizado para %s", event.PaymentID, status)
+
+	// Publica evento payment.processed para o webhook notifier
+	processed := kafkapkg.PaymentProcessedEvent{
+		PaymentID:   event.PaymentID,
+		Status:      string(status),
+		Method:      event.Method,
+		Amount:      event.Amount,
+		Currency:    event.Currency,
+		CustomerID:  event.CustomerID,
+		WebhookURL:  event.WebhookURL,
+		ProcessedAt: time.Now(),
+	}
+
+	if err := w.producer.PublishPaymentProcessed(ctx, processed); err != nil {
+		log.Printf("⚠️  erro ao publicar payment.processed: %v", err)
+	}
+
 	return nil
 }
 
 func resolveStatus(method string) domain.PaymentStatus {
 	switch method {
 	case "PIX":
-		// PIX: aprovação imediata
 		return domain.PaymentApproved
 	case "CREDIT_CARD":
-		// Cartão: simula aprovação (em produção chamaria gateway)
 		return domain.PaymentApproved
 	case "BOLETO":
-		// Boleto: fica pendente até pagamento confirmado
 		return domain.PaymentPending
 	default:
 		return domain.PaymentRejected

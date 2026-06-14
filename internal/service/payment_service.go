@@ -2,21 +2,36 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/joaodddev/paymentprocessor/internal/domain"
+	kafkapkg "github.com/joaodddev/paymentprocessor/internal/kafka"
 	"github.com/joaodddev/paymentprocessor/internal/repository"
 )
 
+const idempotencyTTL = 24 * time.Hour
+
 type PaymentService struct {
 	repository repository.PaymentRepository
+	redis      *redis.Client
+	producer   *kafkapkg.Producer
 }
 
-func NewPaymentService(repository repository.PaymentRepository) *PaymentService {
-	return &PaymentService{repository: repository}
+func NewPaymentService(
+	repository repository.PaymentRepository,
+	redis *redis.Client,
+	producer *kafkapkg.Producer,
+) *PaymentService {
+	return &PaymentService{
+		repository: repository,
+		redis:      redis,
+		producer:   producer,
+	}
 }
 
 func (s *PaymentService) CreatePayment(
@@ -28,9 +43,21 @@ func (s *PaymentService) CreatePayment(
 	idempotencyKey string,
 ) (*domain.Payment, error) {
 
+	// Idempotência via Redis
+	if idempotencyKey != "" {
+		redisKey := fmt.Sprintf("idempotency:%s", idempotencyKey)
+
+		cached, err := s.redis.Get(ctx, redisKey).Result()
+		if err == nil {
+			var payment domain.Payment
+			if err := json.Unmarshal([]byte(cached), &payment); err == nil {
+				return &payment, nil
+			}
+		}
+	}
+
 	switch method {
 	case domain.PaymentMethodPIX, domain.PaymentMethodCreditCard, domain.PaymentMethodBoleto:
-		// valid
 	default:
 		return nil, fmt.Errorf("método de pagamento inválido: %s", method)
 	}
@@ -50,6 +77,28 @@ func (s *PaymentService) CreatePayment(
 
 	if err := s.repository.Create(ctx, payment); err != nil {
 		return nil, err
+	}
+
+	// Salva no Redis para idempotência
+	if idempotencyKey != "" {
+		redisKey := fmt.Sprintf("idempotency:%s", idempotencyKey)
+		data, _ := json.Marshal(payment)
+		s.redis.Set(ctx, redisKey, data, idempotencyTTL)
+	}
+
+	// Publica evento no Kafka
+	event := kafkapkg.PaymentCreatedEvent{
+		PaymentID:      payment.ID.String(),
+		Amount:         payment.Amount,
+		Currency:       payment.Currency,
+		CustomerID:     payment.CustomerID.String(),
+		Method:         string(payment.Method),
+		IdempotencyKey: payment.IdempotencyKey,
+		CreatedAt:      payment.CreatedAt,
+	}
+
+	if err := s.producer.PublishPaymentCreated(ctx, event); err != nil {
+		fmt.Printf("⚠️  erro ao publicar evento Kafka (pagamento criado): %v\n", err)
 	}
 
 	return payment, nil

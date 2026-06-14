@@ -14,13 +14,20 @@ type Config struct {
 	PostgresPassword string
 	PostgresDB       string
 	AppPort          string
+
+	RedisAddr     string
+	RedisPassword string
+	RedisDB       string
+
+	KafkaBrokers               string
+	KafkaGroupID               string
+	KafkaTopicPaymentCreated   string
+	KafkaTopicPaymentProcessed string
 }
 
 func Load() *Config {
-	err := godotenv.Load()
-
-	if err != nil {
-		log.Println("arquivo .env não encontrado, utilizando variáveis do ambiente")
+	if err := godotenv.Load(); err != nil {
+		log.Println("arquivo .env não encontrado, usando variáveis do ambiente")
 	}
 
 	return &Config{
@@ -30,5 +37,14 @@ func Load() *Config {
 		PostgresPassword: os.Getenv("POSTGRES_PASSWORD"),
 		PostgresDB:       os.Getenv("POSTGRES_DB"),
 		AppPort:          os.Getenv("APP_PORT"),
+
+		RedisAddr:     os.Getenv("REDIS_ADDR"),
+		RedisPassword: os.Getenv("REDIS_PASSWORD"),
+		RedisDB:       os.Getenv("REDIS_DB"),
+
+		KafkaBrokers:               os.Getenv("KAFKA_BROKERS"),
+		KafkaGroupID:               os.Getenv("KAFKA_GROUP_ID"),
+		KafkaTopicPaymentCreated:   os.Getenv("KAFKA_TOPIC_PAYMENT_CREATED"),
+		KafkaTopicPaymentProcessed: os.Getenv("KAFKA_TOPIC_PAYMENT_PROCESSED"),
 	}
 }

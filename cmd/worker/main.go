@@ -2,44 +2,43 @@ package main
 
 import (
 	"context"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/joaodddev/paymentprocessor/internal/config"
 	kafkapkg "github.com/joaodddev/paymentprocessor/internal/kafka"
+	"github.com/joaodddev/paymentprocessor/internal/logger"
 	"github.com/joaodddev/paymentprocessor/internal/repository"
 	"github.com/joaodddev/paymentprocessor/internal/worker"
 )
 
 func main() {
-	log.Println("🚀 Iniciando Payment Processor Worker...")
-
 	cfg := config.Load()
+	logger.Init(cfg.AppEnv)
+
+	log.Info().Msg("🚀 Iniciando Payment Processor Worker...")
 
 	db, err := repository.NewPostgresPool(cfg)
 	if err != nil {
-		log.Fatalf("erro ao conectar no postgres: %v", err)
+		log.Fatal().Err(err).Msg("erro ao conectar no postgres")
 	}
 	defer db.Close()
 
-	// Consumers
 	paymentConsumer := kafkapkg.NewConsumer(cfg, cfg.KafkaTopicPaymentCreated)
 	defer paymentConsumer.Close()
 
 	webhookConsumer := kafkapkg.NewConsumer(cfg, cfg.KafkaTopicPaymentProcessed)
 	defer webhookConsumer.Close()
 
-	// Producer (para publicar payment.processed)
 	producer := kafkapkg.NewProducer(cfg)
 	defer producer.Close()
 
-	// Repositories
 	paymentRepository := repository.NewPostgresPaymentRepository(db)
 	webhookRepository := repository.NewPostgresWebhookRepository(db)
 
-	// Workers
 	paymentWorker := worker.NewPaymentWorker(paymentConsumer, paymentRepository, producer)
 	webhookNotifier := worker.NewWebhookNotifier(webhookConsumer, webhookRepository)
 
@@ -52,7 +51,9 @@ func main() {
 	go paymentWorker.Run(ctx)
 	go webhookNotifier.Run(ctx)
 
+	log.Info().Msg("workers rodando, aguardando eventos...")
+
 	<-quit
-	log.Println("⏳ Encerrando workers...")
+	log.Info().Msg("⏳ Encerrando workers...")
 	cancel()
 }

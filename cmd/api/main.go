@@ -1,40 +1,39 @@
 package main
 
 import (
-	"log"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog/log"
 
 	"github.com/joaodddev/paymentprocessor/internal/cache"
 	"github.com/joaodddev/paymentprocessor/internal/config"
 	"github.com/joaodddev/paymentprocessor/internal/handler"
-	"github.com/joaodddev/paymentprocessor/internal/kafka"
+	kafkapkg "github.com/joaodddev/paymentprocessor/internal/kafka"
+	"github.com/joaodddev/paymentprocessor/internal/logger"
 	"github.com/joaodddev/paymentprocessor/internal/repository"
 	"github.com/joaodddev/paymentprocessor/internal/service"
 )
 
 func main() {
-	log.Println("🚀 Iniciando Payment Processor...")
-
 	cfg := config.Load()
+	logger.Init(cfg.AppEnv)
 
-	if cfg.AppPort == "" {
-		cfg.AppPort = "8080"
-	}
+	log.Info().Msg("🚀 Iniciando Payment Processor API...")
 
 	db, err := repository.NewPostgresPool(cfg)
 	if err != nil {
-		log.Fatalf("erro ao conectar no postgres: %v", err)
+		log.Fatal().Err(err).Msg("erro ao conectar no postgres")
 	}
 	defer db.Close()
 
 	redisClient, err := cache.NewRedisClient(cfg)
 	if err != nil {
-		log.Fatalf("erro ao conectar no redis: %v", err)
+		log.Fatal().Err(err).Msg("erro ao conectar no redis")
 	}
 	defer redisClient.Close()
 
-	producer := kafka.NewProducer(cfg)
+	producer := kafkapkg.NewProducer(cfg)
 	defer producer.Close()
 
 	paymentRepository := repository.NewPostgresPaymentRepository(db)
@@ -44,16 +43,16 @@ func main() {
 	router := gin.Default()
 
 	router.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "up"})
+		c.JSON(http.StatusOK, gin.H{"status": "up"})
 	})
 
 	router.POST("/payments", paymentHandler.CreatePayment)
 	router.GET("/payments", paymentHandler.ListPayments)
 	router.GET("/payments/:id", paymentHandler.GetPayment)
 
-	log.Printf("Servidor iniciado na porta %s", cfg.AppPort)
+	log.Info().Str("port", cfg.AppPort).Msg("servidor iniciado")
 
 	if err := router.Run(":" + cfg.AppPort); err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err).Msg("erro ao iniciar servidor")
 	}
 }

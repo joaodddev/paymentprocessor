@@ -14,6 +14,7 @@ type Config struct {
 	PostgresPassword string
 	PostgresDB       string
 	AppPort          string
+	AppEnv           string
 
 	RedisAddr     string
 	RedisPassword string
@@ -37,6 +38,7 @@ func Load() *Config {
 		PostgresPassword: os.Getenv("POSTGRES_PASSWORD"),
 		PostgresDB:       os.Getenv("POSTGRES_DB"),
 		AppPort:          os.Getenv("APP_PORT"),
+		AppEnv:           os.Getenv("APP_ENV"),
 
 		RedisAddr:     os.Getenv("REDIS_ADDR"),
 		RedisPassword: os.Getenv("REDIS_PASSWORD"),
